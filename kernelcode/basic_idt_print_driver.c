@@ -1,29 +1,29 @@
 #include "header_help.h"
 #include <stdio.h>
-typedef struct
-{
-unsigned short IDTLimit;
-unsigned short LowIDTbase;
-unsigned short HiIDTbase;
-} IDTINFO;
-
-#pragma pack(1)
-typedef struct
-{
-unsigned short LowOffset;
-unsigned short selector;
-unsigned char unused_lo;
-unsigned char segment_type:4;
-unsigned char system_segment_flag:1;
-unsigned char DPL:2; // descriptor privilege level
-unsigned char P:1;
-unsigned short HiOffset;
-} IDTENTRY;
-#pragma pack()
 
 #define MAKELONG(a, b) ((unsigned long) (((unsigned short) (a)) | ((unsigned long) ((unsigned short) (b))) << 16))
-
 #define MAX_IDT_ENTRIES 0xFF
+
+typedef struct
+{
+	unsigned short IDTLimit;
+	unsigned short LowIDTbase;
+	unsigned short HiIDTbase;
+	} IDTINFO;
+
+typedef struct
+{
+	unsigned short LowOffset;
+	unsigned short selector;
+	unsigned char unused_lo;
+	unsigned char segment_type:4;
+	unsigned char system_segment_flag:1;
+	unsigned char DPL:2; // descriptor privilege level
+	unsigned char P:1;
+	unsigned short HiOffset;
+} IDTENTRY;
+
+
 
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT theDriverObject, IN PUNICODE_STRING theRegistryPath)
 {
