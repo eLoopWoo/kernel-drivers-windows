@@ -43,15 +43,7 @@ struct _SYSTEM_PROCESSES
         struct _SYSTEM_THREADS          Threads[1];
 };
 
-struct _SYSTEM_PROCESSOR_TIMES
-{
-		LARGE_INTEGER					IdleTime;
-		LARGE_INTEGER					KernelTime;
-		LARGE_INTEGER					UserTime;
-		LARGE_INTEGER					DpcTime;
-		LARGE_INTEGER					InterruptTime;
-		ULONG							InterruptCount;
-};
+
 
 
 NTSYSAPI NTSTATUS NTAPI ZwQuerySystemInformation(
@@ -70,18 +62,42 @@ typedef NTSTATUS (*ZWQUERYSYSTEMINFORMATION)(
 
 ZWQUERYSYSTEMINFORMATION OldZwQuerySystemInformation;
 
-LARGE_INTEGER m_UserTime;
-LARGE_INTEGER m_KernelTime;
-
+NTSTATUS NewZwQuerySystemInformation(
+            IN ULONG SystemInformationClass,
+            IN PVOID SystemInformation,
+            IN ULONG SystemInformationLength,
+            OUT PULONG ReturnLength){
+	NTSTATUS ntStatus;
+	ntStatus = ((ZWQUERYSYSTEMINFORMATION)(OldZwQuerySystemInformation)) (
+				SystemInformationClass,
+				SystemInformation,
+				SystemInformationLength,
+				ReturnLength );
+	DbgPrint("ssdt is hooked :)");
+	return ntStatus;
+	
+}
 VOID OnUnload(IN PDRIVER_OBJECT DriverObject)
 {
-   DbgPrint("OnUnload called\n");
+	DbgPrint("OnUnload called\n");
 }
 
 
 NTSTATUS DriverEntry(IN PDRIVER_OBJECT theDriverObject, IN PUNICODE_STRING theRegistryPath){
-   DbgPrint("DriverEntry called\n");
-   theDriverObject->DriverUnload  = OnUnload; 
-   OldZwQuerySystemInformation =(ZWQUERYSYSTEMINFORMATION)(SYSTEMSERVICE(ZwQuerySystemInformation));
-   return STATUS_SUCCESS;
+	DbgPrint("DriverEntry called\n");
+	theDriverObject->DriverUnload  = OnUnload; 
+
+	OldZwQuerySystemInformation =(ZWQUERYSYSTEMINFORMATION)(SYSTEMSERVICE(ZwQuerySystemInformation));
+
+	g_pmdlSystemCall = MmCreateMdl(NULL, KeServiceDescriptorTable.ServiceTableBase, KeServiceDescriptorTable.NumberOfServices*4);
+	if(!g_pmdlSystemCall)
+		return STATUS_UNSUCCESSFUL;
+	MmBuildMdlForNonPagedPool(g_pmdlSystemCall);
+
+	g_pmdlSystemCall->MdlFlags = g_pmdlSystemCall->MdlFlags | MDL_MAPPED_TO_SYSTEM_VA;
+	MappedSystemCallTable = MmMapLockedPages(g_pmdlSystemCall, KernelMode);
+
+	HOOK_SYSCALL( ZwQuerySystemInformation, NewZwQuerySystemInformation, OldZwQuerySystemInformation );
+							  
+	return STATUS_SUCCESS;
 }
