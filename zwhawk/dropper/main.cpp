@@ -1,9 +1,104 @@
 #include <stdio.h>
 #include <Windows.h>
+#include <string>
+
+bool encapsulation(){
+    LPCTSTR main_file = "C:\\sys_load_scm.exe";
+    LPCTSTR resource_file_in = "C:\\DCOM.sys";
+    LPCTSTR resource_file_out = "C:\\DCOM_OUTPUT.sys";
+
+    HANDLE hFile;
+    DWORD dwFileSize,
+      dwBytesRead, dwBytesWrite;
+    LPBYTE lpBuffer;
+    hFile = CreateFile(resource_file_in, GENERIC_READ,
+                   0,
+                   NULL,
+                   OPEN_EXISTING,
+                   FILE_ATTRIBUTE_NORMAL,
+                   NULL);
+
+    if (INVALID_HANDLE_VALUE != hFile)
+    {
+        dwFileSize = GetFileSize(hFile, NULL);
+        lpBuffer = new BYTE[dwFileSize];
+
+        if (ReadFile(hFile, lpBuffer, dwFileSize, &dwBytesRead, NULL) != FALSE)
+        {
+        }
+
+        CloseHandle(hFile);
+    }
 
 
-bool load_kernel_code_scm(char *driver_name)
-{
+    HANDLE hResource1;
+
+    hResource1 = BeginUpdateResource(main_file, FALSE);
+    if (NULL != hResource1)
+    {
+
+        if (UpdateResource(hResource1,
+            MAKEINTRESOURCE(10),
+            MAKEINTRESOURCE(10),
+            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+            (LPVOID) lpBuffer,
+            dwFileSize) != FALSE)
+        {
+            EndUpdateResource(hResource1, FALSE);
+        }
+    }
+
+
+    HMODULE hLibrary;
+    HRSRC hResource;
+    HGLOBAL hResourceLoaded;
+
+    hLibrary = LoadLibrary(main_file);
+    if (NULL != hLibrary)
+    {
+        hResource = FindResource(hLibrary, MAKEINTRESOURCE(10), MAKEINTRESOURCE(10));
+
+
+        if (NULL != hResource)
+        {
+
+            hResourceLoaded = LoadResource(hLibrary, hResource);
+            if (NULL != hResourceLoaded)
+            {
+
+                lpBuffer = (LPBYTE) LockResource(hResourceLoaded);
+                if (NULL != lpBuffer)
+                {
+                }
+            }
+        }
+
+
+    }
+
+
+    DWORD dwBytesWritten;
+
+    dwFileSize = SizeofResource(hLibrary, hResource);
+    hFile = CreateFile(resource_file_out,
+                       GENERIC_WRITE,
+                       0,
+                       NULL,
+                       CREATE_ALWAYS,
+                       FILE_ATTRIBUTE_NORMAL,
+                       NULL);
+
+    if (INVALID_HANDLE_VALUE != hFile)
+    {
+        WriteFile(hFile, lpBuffer, dwFileSize, &dwBytesWritten, NULL);
+        CloseHandle(hFile);
+    }
+
+    return 0;
+}
+
+// Load driver to kernel space
+bool load_kernel_code_scm(char *driver_name){
     char aPath[1024];
     char aCurrentDirectory[515];
 
@@ -143,6 +238,7 @@ bool load_kernel_code_scm(char *driver_name)
     return true;
 }
 
+// Unload driver from kernel space
 bool unload_kernel_code_scm(char *driver_name){
     SC_HANDLE sh = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
     if(!sh)
@@ -240,8 +336,8 @@ bool unload_kernel_code_scm(char *driver_name){
     return true;
 }
 
-int main()
-{
+// Connect to SymbolicLink and send IRP to driver (
+bool connect_driver(char *driver_name){
     /*
     typedef void *PVOID;
     typedef PVOID HANDLE;
@@ -265,8 +361,9 @@ int main()
       _In_opt_ HANDLE                hTemplateFile // A valid handle to a template file with the GENERIC_READ access right.
     );
     */
-
-    hFile=CreateFile("\\\\.\\zwhawk",GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
+    LPCTSTR driver;
+    driver = (std::string("\\\\.\\") + std::string(driver_name)).c_str();
+    hFile=CreateFile(driver,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
 
     if(hFile==INVALID_HANDLE_VALUE)
     {
@@ -301,4 +398,12 @@ int main()
     }
 
     return 0;
+}
+
+int main(){
+    if( !load_kernel_code_scm("zwhawk") ){
+        printf("main - load_kernel_code_scm failed (%Iu)\n", GetLastError());
+        return -1;
+    }
+    connect_driver("zwhawk");
 }
