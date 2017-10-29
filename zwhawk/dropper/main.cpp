@@ -2,53 +2,153 @@
 #include <Windows.h>
 #include <string>
 
-bool encapsulation(){
-    LPCTSTR main_file = "C:\\sys_load_scm.exe";
-    LPCTSTR resource_file_in = "C:\\DCOM.sys";
-    LPCTSTR resource_file_out = "C:\\DCOM_OUTPUT.sys";
+BYTE read_data_file(char *driver_name){
+
+    char aSysPath[1024];
+    char aCurrentDirectory[515];
+
+    /*
+    Retrieves the current directory for the current process.
+
+    DWORD WINAPI GetCurrentDirectory(
+      _In_  DWORD  nBufferLength, // The length of the buffer for the current directory string, in TCHARs.
+      _Out_ LPTSTR lpBuffer // A pointer to the buffer that receives the current directory string.
+    );
+    */
+    GetCurrentDirectory( 512, aCurrentDirectory);
+
+    //int _snprintf( char *buffer, size_t count, const char *format [, argument] ... );
+    _snprintf(aSysPath,1022,"%s\\%s.sys",aCurrentDirectory,driver_name);
 
     HANDLE hFile;
-    DWORD dwFileSize,
-      dwBytesRead, dwBytesWrite;
+    DWORD dwFileSize, dwBytesRead, dwBytesWrite;
     LPBYTE lpBuffer;
-    hFile = CreateFile(resource_file_in, GENERIC_READ,
+
+    /*
+    Creates or opens a file or I/O device.
+
+    HANDLE WINAPI CreateFile(
+      _In_     LPCTSTR               lpFileName, // The name of the file or device to be created or opened.
+      _In_     DWORD                 dwDesiredAccess, // The requested access to the file or device, read, write, both or neither.
+      _In_     DWORD                 dwShareMode, // If this parameter is zero and CreateFile succeeds, the file or device
+                                                  // cannot be shared and cannot be opened again until the handle to the file or device is closed.
+      _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes, // A pointer to a SECURITY_ATTRIBUTES structure
+      _In_     DWORD                 dwCreationDisposition, // An action to take on a file or device that exists or does not exist.
+      _In_     DWORD                 dwFlagsAndAttributes, // The file or device attributes and flags
+      _In_opt_ HANDLE                hTemplateFile // A valid handle to a template file with the GENERIC_READ access right.
+    );
+    */
+    hFile = CreateFile(aSysPath, GENERIC_READ,
                    0,
                    NULL,
                    OPEN_EXISTING,
                    FILE_ATTRIBUTE_NORMAL,
                    NULL);
-
-    if (INVALID_HANDLE_VALUE != hFile)
+    // If CreateFile succeeded
+    if (INVALID_HANDLE_VALUE == hFile)
     {
-        dwFileSize = GetFileSize(hFile, NULL);
-        lpBuffer = new BYTE[dwFileSize];
+        printf("read_data_file - CreateFile failed (%Iu)\n", GetLastError());
+        return false;
+    }
 
-        if (ReadFile(hFile, lpBuffer, dwFileSize, &dwBytesRead, NULL) != FALSE)
-        {
-        }
+    /*
+    Retrieves the size of the specified file, in bytes.
 
+    DWORD WINAPI GetFileSize(
+      _In_      HANDLE  hFile, // A handle to the file.
+      _Out_opt_ LPDWORD lpFileSizeHigh // A pointer to the variable where the high-order doubleword of the file size is returned.
+    );
+    */
+    dwFileSize = GetFileSize(hFile, NULL);
+    if (!(dwFileSize)){
+        printf("read_data_file - GetFileSize failed (%Iu)\n", GetLastError());
+        return false;
+    }
+
+    lpBuffer = new BYTE[dwFileSize];
+
+    /*
+    Reads data from the specified file or input/output (I/O) device.
+
+    BOOL WINAPI ReadFile(
+      _In_        HANDLE       hFile, // A handle to the device
+      _Out_       LPVOID       lpBuffer, // A pointer to the buffer that receives the data read from a file or device.
+      _In_        DWORD        nNumberOfBytesToRead, // The maximum number of bytes to be read.
+      _Out_opt_   LPDWORD      lpNumberOfBytesRead, // A pointer to the variable that receives the number of bytes
+                                                    // read when using a synchronous hFile parameter.
+      _Inout_opt_ LPOVERLAPPED lpOverlapped // A pointer to an OVERLAPPED structure.
+    );
+    */
+    if (ReadFile(hFile, lpBuffer, dwFileSize, &dwBytesRead, NULL) == FALSE)
+    {
+        printf("read_data_file - ReadFile failed (%Iu)\n", GetLastError());
         CloseHandle(hFile);
+        return false;
     }
 
+    CloseHandle(hFile);
+    return lpBuffer;
+}
 
+bool encapsulation(char *driver_name, LPBYTE lpBuffer){
+}
     HANDLE hResource1;
+    char aExePath[1024];
+    char aCurrentDirectory[515];
 
-    hResource1 = BeginUpdateResource(main_file, FALSE);
-    if (NULL != hResource1)
+    /*
+    Retrieves the current directory for the current process.
+
+    DWORD WINAPI GetCurrentDirectory(
+      _In_  DWORD  nBufferLength, // The length of the buffer for the current directory string, in TCHARs.
+      _Out_ LPTSTR lpBuffer // A pointer to the buffer that receives the current directory string.
+    );
+    */
+    GetCurrentDirectory( 512, aCurrentDirectory);
+    _snprintf(aExePath,1022,"%s\\%s.exe",aCurrentDirectory,driver_name);
+
+    /*
+    Retrieves a handle that can be used by the UpdateResource function to add, delete,
+    or replace resources in a binary module.
+
+    HANDLE WINAPI BeginUpdateResource(
+      _In_ LPCTSTR pFileName, // The binary file in which to update resources.
+      _In_ BOOL    bDeleteExistingResources // Indicates whether to delete the pFileName parameter's existing resources.
+    );
+    */
+    hResourceEXE = BeginUpdateResource(aExePath, FALSE);
+    if (NULL == hResource1)
     {
-
-        if (UpdateResource(hResource1,
-            MAKEINTRESOURCE(10),
-            MAKEINTRESOURCE(10),
-            MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-            (LPVOID) lpBuffer,
-            dwFileSize) != FALSE)
-        {
-            EndUpdateResource(hResource1, FALSE);
-        }
+        printf("encapsulation - BeginUpdateResource failed (%Iu)\n", GetLastError());
+        return false;
     }
 
+    /*
+    Adds, deletes, or replaces a resource in a portable executable (PE) file.
 
+    BOOL WINAPI UpdateResource(
+      _In_     HANDLE  hUpdate, // A module handle returned by the BeginUpdateResource function, referencing the file to be updated.
+      _In_     LPCTSTR lpType, // The resource type to be updated.
+      _In_     LPCTSTR lpName, // The name of the resource to be updated.
+      _In_     WORD    wLanguage, // The language identifier of the resource to be updated.
+      _In_opt_ LPVOID  lpData, // The resource data to be inserted into the file indicated by hUpdate.
+      _In_     DWORD   cbData // The size, in bytes, of the resource data at lpData.
+
+
+    Creates a language identifier from a primary language identifier and a sublanguage identifier.
+
+    WORD MAKELANGID(
+       USHORT usPrimaryLanguage, // Primary language identifier.
+       USHORT usSubLanguage // Sublanguage identifier.
+    );
+    );
+    */
+    if (UpdateResource(hResourceEXE, MAKEINTRESOURCE(10), MAKEINTRESOURCE(10), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPVOID) lpBuffer, dwFileSize) == FALSE)
+    {
+        printf("encapsulation - UpdateResource failed (%Iu)\n", GetLastError());
+        return false;
+    }
+    EndUpdateResource(hResourceEXE, FALSE);
     HMODULE hLibrary;
     HRSRC hResource;
     HGLOBAL hResourceLoaded;
@@ -61,7 +161,7 @@ bool encapsulation(){
 
         if (NULL != hResource)
         {
-
+`
             hResourceLoaded = LoadResource(hLibrary, hResource);
             if (NULL != hResourceLoaded)
             {
