@@ -543,7 +543,7 @@ bool connect_driver(char *driver_name){
 
     while(true){
         printf("\nEnter PID( 99999 for exit ): ");
-        scanf("%Iu",&ProcessId);
+        scanf("%9Iu",&ProcessId);
         if (ProcessId == 99999)
             return true;
         /*
@@ -585,12 +585,12 @@ int main(){
         printf("2) Unload driver\n");
         printf("3) Encapsulate driver to EXE\n");
         printf("4) Decapsulate driver from EXE\n");
-        scanf("%u",&option);
+        scanf("%9u",&option);
 
         if (option == 0){
             printf("\nConnect to driver\n");
             printf("Enter driver name:");
-            scanf("%s",driver_name);
+            scanf("%126s",driver_name);
             if (!(connect_driver(driver_name))){
                 printf("\nmain - connect_driver failed (%Iu)\n", GetLastError());
             }
@@ -602,7 +602,7 @@ int main(){
         if (option == 1){
             printf("\nLoad driver\n");
             printf("Enter driver name:");
-            scanf("%s",driver_name);
+            scanf("%126s",driver_name);
             if (!(load_kernel_code_scm(driver_name))){
                 printf("\nmain - load_kernel_code_scm failed (%Iu)\n", GetLastError());
             }
@@ -614,7 +614,7 @@ int main(){
         if (option == 2){
             printf("\nUnload driver\n");
             printf("Enter driver name:");
-            scanf("%s",driver_name);
+            scanf("%126s",driver_name);
             if (!(unload_kernel_code_scm(driver_name))){
                 printf("\nmain - unload_kernel_code_scm failed (%Iu)\n", GetLastError());
             }
@@ -626,9 +626,9 @@ int main(){
         if (option == 3){
             printf("\nEncapsulate driver to EXE\n");
             printf("Enter driver name:");
-            scanf("%s",driver_name);
+            scanf("%126s",driver_name);
             printf("Enter dropper name:");
-            scanf("%s",dropper_name);
+            scanf("%126s",dropper_name);
             if (!(encapsulation(dropper_name, driver_name))){
                 printf("\nmain - encapsulation failed (%Iu)\n", GetLastError());
             }
@@ -640,9 +640,9 @@ int main(){
         if (option == 4){
             printf("\nDecapsulate driver from EXE\n");
             printf("Enter driver name:");
-            scanf("%s",driver_name);
+            scanf("%126s",driver_name);
             printf("Enter dropper name:");
-            scanf("%s",dropper_name);
+            scanf("%126s",dropper_name);
             if (!(decapsulation(dropper_name, driver_name))){
                 printf("\nmain - decapsulation failed (%Iu)\n", GetLastError());
             }
